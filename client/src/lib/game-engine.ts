@@ -10,6 +10,8 @@ export class GameEngine {
   private character: Character;
   private world: World;
   private keys: { [key: string]: boolean } = {};
+  private mouseDown: boolean = false;
+  private mouseMoveSpeed: number = 0.002;
 
   constructor(canvas: HTMLCanvasElement, user: User) {
     this.scene = new THREE.Scene();
@@ -22,18 +24,37 @@ export class GameEngine {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.shadowMap.enabled = true;
 
     this.world = new World(this.scene);
     this.character = new Character(this.scene, user.character);
 
-    this.camera.position.set(0, 5, 10);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(5, 5, 5);
+    this.camera.lookAt(this.character.getPosition());
 
+    this.setupControls();
+    this.animate();
+  }
+
+  private setupControls() {
     window.addEventListener("keydown", (e) => (this.keys[e.key] = true));
     window.addEventListener("keyup", (e) => (this.keys[e.key] = false));
     window.addEventListener("resize", this.handleResize);
+    window.addEventListener("mousedown", () => (this.mouseDown = true));
+    window.addEventListener("mouseup", () => (this.mouseDown = false));
+    window.addEventListener("mousemove", (e) => this.handleMouseMove(e));
+  }
 
-    this.animate();
+  private handleMouseMove(event: MouseEvent) {
+    if (!this.mouseDown) return;
+
+    const deltaX = event.movementX * this.mouseMoveSpeed;
+    const deltaY = event.movementY * this.mouseMoveSpeed;
+
+    this.character.rotate(deltaX);
+    this.camera.position.y = Math.max(2, Math.min(10, 
+      this.camera.position.y - deltaY * 5
+    ));
   }
 
   private handleResize = () => {
@@ -44,10 +65,29 @@ export class GameEngine {
 
   private update() {
     const moveSpeed = 0.1;
-    if (this.keys["w"]) this.character.moveForward(moveSpeed);
-    if (this.keys["s"]) this.character.moveBackward(moveSpeed);
-    if (this.keys["a"]) this.character.moveLeft(moveSpeed);
-    if (this.keys["d"]) this.character.moveRight(moveSpeed);
+    const moveDirection = new THREE.Vector3();
+
+    if (this.keys["w"]) moveDirection.z -= 1;
+    if (this.keys["s"]) moveDirection.z += 1;
+    if (this.keys["a"]) moveDirection.x -= 1;
+    if (this.keys["d"]) moveDirection.x += 1;
+    if (this.keys[" "]) this.character.jump();
+
+    if (moveDirection.length() > 0) {
+      moveDirection.normalize().multiplyScalar(moveSpeed);
+      this.character.move(moveDirection);
+    }
+
+    this.character.update();
+
+    // Camera follows character
+    const characterPos = this.character.getPosition();
+    const cameraTarget = new THREE.Vector3(
+      characterPos.x,
+      characterPos.y + 2,
+      characterPos.z
+    );
+    this.camera.lookAt(cameraTarget);
   }
 
   private animate = () => {
@@ -58,6 +98,9 @@ export class GameEngine {
 
   public dispose() {
     window.removeEventListener("resize", this.handleResize);
+    window.removeEventListener("mousedown", () => (this.mouseDown = true));
+    window.removeEventListener("mouseup", () => (this.mouseDown = false));
+    window.removeEventListener("mousemove", (e) => this.handleMouseMove(e));
     this.renderer.dispose();
   }
 }
